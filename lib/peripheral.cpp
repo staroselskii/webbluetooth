@@ -1,5 +1,8 @@
 #include "peripheral.h"
+
 #include "simpleble_c/simpleble.h"
+
+extern Napi::FunctionReference attErrorConstructor;
 
 Napi::FunctionReference Peripheral::constructor;
 
@@ -313,30 +316,9 @@ Napi::Value Peripheral::Read(const Napi::CallbackInfo &info) {
 Napi::Value Peripheral::WriteRequest(const Napi::CallbackInfo &info) {
   Napi::Env env = info.Env();
 
-  if (info.Length() < 1) {
-    Napi::TypeError::New(env, "Missing service").ThrowAsJavaScriptException();
-    return env.Undefined();
-  } else if (!info[0].IsString()) {
-    Napi::TypeError::New(env, "Service is not a string")
+  if (info.Length() < 3 || !info[0].IsString() || !info[1].IsString() || !info[2].IsTypedArray()) {
+    Napi::TypeError::New(env, "Expected arguments: string service, string characteristic, Uint8Array data")
         .ThrowAsJavaScriptException();
-    return env.Undefined();
-  }
-
-  if (info.Length() < 2) {
-    Napi::TypeError::New(env, "Missing characteristic")
-        .ThrowAsJavaScriptException();
-    return env.Undefined();
-  } else if (!info[1].IsString()) {
-    Napi::TypeError::New(env, "Characteristic is not a string")
-        .ThrowAsJavaScriptException();
-    return env.Undefined();
-  }
-
-  if (info.Length() < 3) {
-    Napi::TypeError::New(env, "Missing data").ThrowAsJavaScriptException();
-    return env.Undefined();
-  } else if (!info[2].IsTypedArray()) {
-    Napi::TypeError::New(env, "Invalid data").ThrowAsJavaScriptException();
     return env.Undefined();
   }
 
@@ -348,12 +330,13 @@ Napi::Value Peripheral::WriteRequest(const Napi::CallbackInfo &info) {
   const size_t data_size = info[2].As<Napi::Uint8Array>().ByteLength();
 
   memcpy(service.value, cbService.Utf8Value().c_str(), SIMPLEBLE_UUID_STR_LEN);
-  memcpy(characteristic.value, cbChar.Utf8Value().c_str(),
-         SIMPLEBLE_UUID_STR_LEN);
+  memcpy(characteristic.value, cbChar.Utf8Value().c_str(), SIMPLEBLE_UUID_STR_LEN);
 
-  const auto ret = simpleble_peripheral_write_request(
-      this->handle, service, characteristic, data, data_size);
-  return Napi::Boolean::New(env, ret == SIMPLEBLE_SUCCESS);
+  const auto ret = simpleble_peripheral_write_request(this->handle, service, characteristic, data, data_size);
+
+  std::cout << "WriteRequest returned code: " << (int)ret << std::endl;
+
+  return Napi::Number::New(env, ret);
 }
 
 Napi::Value Peripheral::WriteCommand(const Napi::CallbackInfo &info) {
@@ -399,7 +382,14 @@ Napi::Value Peripheral::WriteCommand(const Napi::CallbackInfo &info) {
 
   const auto ret = simpleble_peripheral_write_command(
       this->handle, service, characteristic, data, data_size);
-  return Napi::Boolean::New(env, ret == SIMPLEBLE_SUCCESS);
+  if (ret != SIMPLEBLE_SUCCESS) {
+      Napi::Object errorObj = Napi::Object::New(env);
+      errorObj.Set("code", Napi::Number::New(env, ret));
+      errorObj.Set("type", "ATT");
+      errorObj.Set("message", "ATT Error 0x" + std::to_string(ret));
+      return errorObj;
+  }
+  return env.Undefined();
 }
 
 Napi::Value Peripheral::Unsubscribe(const Napi::CallbackInfo &info) {
@@ -550,13 +540,12 @@ Napi::Value Peripheral::WriteDescriptor(const Napi::CallbackInfo &info) {
   const size_t data_size = info[3].As<Napi::Uint8Array>().ByteLength();
 
   memcpy(service.value, cbService.Utf8Value().c_str(), SIMPLEBLE_UUID_STR_LEN);
-  memcpy(characteristic.value, cbChar.Utf8Value().c_str(),
-         SIMPLEBLE_UUID_STR_LEN);
+  memcpy(characteristic.value, cbChar.Utf8Value().c_str(), SIMPLEBLE_UUID_STR_LEN);
   memcpy(descriptor.value, cbDesc.Utf8Value().c_str(), SIMPLEBLE_UUID_STR_LEN);
 
   const auto ret = simpleble_peripheral_write_descriptor(
       this->handle, service, characteristic, descriptor, data, data_size);
-  return Napi::Boolean::New(env, ret == SIMPLEBLE_SUCCESS);
+  return Napi::Number::New(env, ret);
 }
 
 Napi::Value Peripheral::Notify(const Napi::CallbackInfo &info) {
@@ -724,9 +713,9 @@ void Peripheral::onDisconnected(simpleble_peripheral_t, void *userdata) {
   peripheral->onDisconnectedFn.NonBlockingCall(callback);
 }
 
-void Peripheral::onNotify(simpleble_uuid_t service,
-                          simpleble_uuid_t characteristic, const uint8_t *data,
-                          size_t data_length, void *userdata) {
+void Peripheral::onNotify(simpleble_peripheral_t, simpleble_uuid_t service,
+                          simpleble_uuid_t characteristic, const uint8_t* data,
+                          size_t data_length, void* userdata) {
   auto peripheral = reinterpret_cast<Peripheral *>(userdata);
   std::vector<uint8_t> vecData(data, data + data_length);
   auto callback = [vecData](Napi::Env env, Napi::Function jsCallback) {
@@ -742,10 +731,9 @@ void Peripheral::onNotify(simpleble_uuid_t service,
     it->second.NonBlockingCall(callback);
 }
 
-void Peripheral::onIndicate(simpleble_uuid_t service,
-                            simpleble_uuid_t characteristic,
-                            const uint8_t *data, size_t data_length,
-                            void *userdata) {
+void Peripheral::onIndicate(simpleble_peripheral_t, simpleble_uuid_t service,
+                            simpleble_uuid_t characteristic, const uint8_t* data,
+                            size_t data_length, void* userdata) {
   auto peripheral = reinterpret_cast<Peripheral *>(userdata);
   std::vector<uint8_t> vecData(data, data + data_length);
   auto callback = [vecData](Napi::Env env, Napi::Function jsCallback) {

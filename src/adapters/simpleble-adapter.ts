@@ -39,6 +39,7 @@ import {
     Characteristic,
     Descriptor
 } from './simpleble';
+import { ATTError } from '../errors';
 
 /**
  * @hidden
@@ -166,9 +167,6 @@ class PeripheralHandles {
     }
 }
 
-/**
- * @hidden
- */
 export class SimplebleAdapter extends EventEmitter implements BluetoothAdapter {
     private adapter: Adapter;
     private peripherals = new Map<string, Peripheral>();
@@ -425,16 +423,19 @@ export class SimplebleAdapter extends EventEmitter implements BluetoothAdapter {
 
     public async writeCharacteristic(handle: string, value: DataView, withoutResponse = false): Promise<void> {
         const { peripheral, service, characteristic } = this.handles.getCharacteristicGraph(handle);
-        let success = false;
 
+        const data = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+        const SIMPLEBLE_SUCCESS = 0;
+
+        let result: number;
         if (withoutResponse) {
-            success = peripheral.writeCommand(service.uuid, characteristic.uuid, new Uint8Array(value.buffer));
+            result = peripheral.writeCommand(service.uuid, characteristic.uuid, data);
         } else {
-            success = peripheral.writeRequest(service.uuid, characteristic.uuid, new Uint8Array(value.buffer));
+            result = peripheral.writeRequest(service.uuid, characteristic.uuid, data);
         }
 
-        if (!success) {
-            throw new Error('Write failed');
+        if (result !== SIMPLEBLE_SUCCESS) {
+            throw new ATTError(result);
         }
     }
 
@@ -457,10 +458,14 @@ export class SimplebleAdapter extends EventEmitter implements BluetoothAdapter {
 
     public async writeDescriptor(handle: string, value: DataView): Promise<void> {
         const { peripheral, service, characteristic, descriptor } = this.handles.getDescriptorGraph(handle);
-        const success = peripheral.writeDescriptor(service.uuid, characteristic.uuid, descriptor, new Uint8Array(value.buffer));
+        const result = peripheral.writeDescriptor(service.uuid, characteristic.uuid, descriptor, new Uint8Array(value.buffer));
 
-        if (!success) {
-            throw new Error('Write failed');
+        if (result !== 0) {
+            throw this.mapAttError(result);
         }
+    }
+
+    private mapAttError(code: number): ATTError {
+        return new ATTError(code);
     }
 }

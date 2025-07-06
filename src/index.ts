@@ -35,6 +35,8 @@ export const bluetooth = new BluetoothImpl();
  */
 export { BluetoothImpl as Bluetooth, BluetoothOptions, getAdapters };
 
+export { ATTError } from './errors';
+
 /**
  * Helper methods and enums
  */

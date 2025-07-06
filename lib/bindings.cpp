@@ -2,6 +2,7 @@
 #include <napi.h>
 #include <simpleble_c/simpleble.h>
 
+
 #include "adapter.h"
 #include "peripheral.h"
 
@@ -36,5 +37,6 @@ static Napi::Object Init(Napi::Env env, Napi::Object exports) {
 
   return exports;
 }
+
 
 NODE_API_MODULE(NODE_GYP_MODULE_NAME, Init)

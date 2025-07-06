@@ -28,6 +28,7 @@ import { BluetoothDeviceImpl, BluetoothDeviceEvents } from './device';
 import { BluetoothUUID } from './uuid';
 import { EventDispatcher, DOMEvent } from './events';
 
+
 /**
  * Bluetooth Options interface
  */
